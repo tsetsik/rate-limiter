@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"rate-limiter/internal/config"
 	"strconv"
 	"time"
+
+	"github.com/tsetsik/rate-limiter/internal/config"
 
 	"github.com/joho/godotenv"
 )
@@ -42,14 +43,23 @@ func (s *Service) Start() error {
 		return fmt.Errorf("invalid config: %w", err)
 	}
 
-	handler := NewHandler()
+	mux := http.NewServeMux()
 
-	server := &http.Server{
-		Addr:           s.cfg.Host + ":" + strconv.Itoa(s.cfg.Port),
-		Handler:        handler,
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
-	}
-	return server.ListenAndServe()
+	httpResolver := NewHttpResolver()
+
+	mux.Handle("GET /users", rateLimitMiddleware(http.HandlerFunc(httpResolver.GetUsers)))
+	return http.ListenAndServe(s.cfg.Host+":"+strconv.Itoa(s.cfg.Port), mux)
+}
+
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	rateLimiter := NewRateLimiter(5, 10*time.Second) // 5 requests per 10 seconds
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID := r.Header.Get("X-User-ID")
+		if !rateLimiter.Allow(userID) {
+			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

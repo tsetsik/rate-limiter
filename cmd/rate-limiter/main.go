@@ -1,7 +1,7 @@
 package main
 
 import (
-	service "rate-limiter/internal/http"
+	service "github.com/tsetsik/rate-limiter/internal/http"
 )
 
 func main() {
